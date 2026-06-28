@@ -36,9 +36,11 @@ class TodoService:
         bus: EventBus | None = None,
         analyzer: Analyzer | None = None,
     ) -> None:
-        self.repo = repo or InMemoryTaskRepository()
-        self.bus = bus or EventBus()
-        self.analyzer = analyzer or Analyzer()
+        # NB: an empty repo is falsy (TaskRepository defines __len__), so test
+        # against None explicitly instead of using `repo or ...`.
+        self.repo = repo if repo is not None else InMemoryTaskRepository()
+        self.bus = bus if bus is not None else EventBus()
+        self.analyzer = analyzer if analyzer is not None else Analyzer()
         self.invoker = CommandInvoker()
 
     # --- creation ---------------------------------------------------------
@@ -81,6 +83,10 @@ class TodoService:
             key=lambda t: t.completed_at or t.updated_at,
             reverse=True,
         )
+    def pending(self) -> list[Task]:
+        """Active (non-terminal) tasks, highest priority first."""
+        active = [t for t in self.repo.list() if t.status.is_active]
+        return sort_tasks(active, strategy="priority")
 
     def find(
         self,

@@ -30,6 +30,11 @@ from .exceptions import (
     ValidationError,
 )
 from .models import RecurrenceRule, Tag, Task
+from .persistence import (
+    FileTaskRepository,
+    record_to_task,
+    task_to_record,
+)
 from .repository import InMemoryTaskRepository, TaskRepository
 from .service import TodoService
 from .sorting import sort_tasks
@@ -77,6 +82,9 @@ __all__ = [
     "Task",
     "InMemoryTaskRepository",
     "TaskRepository",
+    "FileTaskRepository",
+    "record_to_task",
+    "task_to_record",
     "TodoService",
     "sort_tasks",
     "Always",

@@ -29,6 +29,25 @@ print(svc.stats().as_lines())
 svc.undo(); svc.redo()
 ```
 
+## Persistence
+
+`FileTaskRepository` implements the same `TaskRepository` port, so it swaps in
+without touching any logic — state survives across process restarts:
+
+```python
+from todoapp import TodoService, FileTaskRepository
+
+svc = TodoService(repo=FileTaskRepository("tasks.json"))
+svc.add("survives a restart")          # autosaved to disk (atomic write)
+
+# later, in a fresh process:
+svc2 = TodoService(repo=FileTaskRepository("tasks.json"))
+assert len(svc2) == 1                   # loaded back from JSON
+```
+
+Writes are atomic (temp file + `os.replace`) so a crash never truncates the
+store. Records round-trip losslessly via `task_to_record` / `record_to_task`.
+
 ## Architecture
 
 | Module             | Responsibility                                              |
@@ -37,6 +56,7 @@ svc.undo(); svc.redo()
 | `exceptions.py`    | Domain error hierarchy (`TodoError` root)                   |
 | `models.py`        | `Tag`, `RecurrenceRule`, `Task` aggregate root              |
 | `repository.py`    | `TaskRepository` port + `InMemoryTaskRepository`            |
+| `persistence.py`   | `FileTaskRepository` (JSON, atomic write) + serde helpers   |
 | `specifications.py`| Composable filters (`&`, `\|`, `~`) — Specification pattern  |
 | `sorting.py`       | Named sort strategies                                       |
 | `commands.py`      | Command pattern + `CommandInvoker` undo/redo, `MacroCommand`|
