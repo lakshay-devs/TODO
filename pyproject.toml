@@ -1,0 +1,22 @@
+[project]
+name = "todoapp"
+version = "0.1.0"
+description = "In-memory todo engine with commands, specs, events and a dependency DAG"
+readme = "README.md"
+authors = [
+    { name = "Lakshay Goyal", email = "112741354+lakshay-goyal@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+todoapp = "todoapp:main"
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
