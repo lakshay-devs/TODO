@@ -1,6 +1,6 @@
 """Streamlit UI for the todoapp engine.
 
-Run with:  streamlit run streamlit_app.py
+Run with:  streamlit run src/streamlit_app.py
 """
 
 from __future__ import annotations
@@ -11,9 +11,9 @@ from pathlib import Path
 
 import streamlit as st
 
-# Make the `src/` layout importable without an editable install.
-SRC = Path(__file__).parent / "src"
-if SRC.exists() and str(SRC) not in sys.path:
+# This file lives in `src/`, alongside the `todoapp` package.
+SRC = Path(__file__).parent
+if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from todoapp.enums import Priority, RecurrenceUnit, Status
@@ -29,7 +29,7 @@ from todoapp.specifications import (
     TextMatches,
 )
 
-DATA_FILE = Path(__file__).parent / "tasks.json"
+DATA_FILE = Path(__file__).parent.parent / "tasks.json"
 
 STATUS_ICON = {
     Status.TODO: "⬜",
