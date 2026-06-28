@@ -73,6 +73,11 @@ class TodoService:
     def all(self) -> list[Task]:
         return self.repo.list()
 
+    def pending(self) -> list[Task]:
+        """Active (non-terminal) tasks, highest priority first."""
+        active = [t for t in self.repo.list() if t.status.is_active]
+        return sort_tasks(active, strategy="priority")
+
     def find(
         self,
         spec: Specification | None = None,
