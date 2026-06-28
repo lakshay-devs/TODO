@@ -73,6 +73,15 @@ class TodoService:
     def all(self) -> list[Task]:
         return self.repo.list()
 
+    def done(self) -> list[Task]:
+        """Completed tasks, most recently completed first."""
+        completed = [t for t in self.repo.list() if t.is_done]
+        return sorted(
+            completed,
+            key=lambda t: t.completed_at or t.updated_at,
+            reverse=True,
+        )
+
     def find(
         self,
         spec: Specification | None = None,
