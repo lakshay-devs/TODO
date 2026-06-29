@@ -10,6 +10,24 @@ uv run python -m todoapp
 uv run pytest -q        # 14 tests
 ```
 
+## Web UI
+
+A [Streamlit](https://streamlit.io/) frontend over `TodoService` (persists to
+`tasks.json` via `FileTaskRepository`):
+
+```bash
+uv run streamlit run src/streamlit_app.py   # http://localhost:8501
+```
+
+Add tasks, filter/sort, change status, undo/redo, view stats, and manage the
+dependency graph — all from the browser. See [docs/12-streamlit-ui.md](docs/12-streamlit-ui.md).
+
+## Documentation
+
+In-depth developer docs live in [`docs/`](docs/README.md) — one file per part of
+the project (domain models, repository, commands, events, service, UI, testing,
+and a patterns glossary). Start at [docs/README.md](docs/README.md).
+
 ## Library use
 
 ```python

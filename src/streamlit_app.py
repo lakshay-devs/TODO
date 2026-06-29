@@ -39,6 +39,22 @@ STATUS_ICON = {
     Status.ARCHIVED: "📦",
 }
 
+# Accent colour per status / priority — drives the coloured pills + badges.
+STATUS_COLOR = {
+    Status.TODO: "#64748b",
+    Status.IN_PROGRESS: "#2563eb",
+    Status.BLOCKED: "#dc2626",
+    Status.DONE: "#16a34a",
+    Status.ARCHIVED: "#94a3b8",
+}
+PRIORITY_COLOR = {
+    Priority.CRITICAL: "#dc2626",
+    Priority.HIGH: "#ea580c",
+    Priority.MEDIUM: "#2563eb",
+    Priority.LOW: "#0891b2",
+    Priority.TRIVIAL: "#94a3b8",
+}
+
 
 # --- service wiring --------------------------------------------------------
 @st.cache_resource
@@ -54,21 +70,81 @@ def rerun() -> None:
     st.rerun()
 
 
+# --- styling ---------------------------------------------------------------
+def inject_css() -> None:
+    st.markdown(
+        """
+        <style>
+          .block-container { padding-top: 2rem; max-width: 1100px; }
+          /* hero banner */
+          .hero {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+            padding: 1.4rem 1.6rem; border-radius: 16px; color: #fff;
+            margin-bottom: 1.2rem; box-shadow: 0 8px 24px rgba(99,102,241,.25);
+          }
+          .hero h1 { margin: 0; font-size: 1.9rem; font-weight: 800; }
+          .hero p  { margin: .25rem 0 0; opacity: .9; font-size: .95rem; }
+          /* generic pill / badge */
+          .pill {
+            display: inline-block; padding: 2px 10px; border-radius: 999px;
+            font-size: .72rem; font-weight: 700; color: #fff; line-height: 1.5;
+            margin-right: 6px; white-space: nowrap;
+          }
+          .badge {
+            display: inline-block; padding: 2px 9px; border-radius: 8px;
+            font-size: .72rem; font-weight: 600; line-height: 1.5; margin-right: 6px;
+          }
+          .tag {
+            display: inline-block; padding: 1px 8px; border-radius: 999px;
+            font-size: .7rem; background: #eef2ff; color: #4338ca;
+            margin-right: 5px; font-weight: 600;
+          }
+          .ttl { font-size: 1.05rem; font-weight: 700; }
+          .ttl-done { text-decoration: line-through; opacity: .55; }
+          .muted { color: #94a3b8; font-size: .78rem; }
+          /* task card container */
+          div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 14px !important;
+          }
+          /* progress bar slimmer */
+          .stProgress > div > div { height: 10px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def due_badge(task) -> str:
+    """Coloured due-date badge HTML, or empty string when no due date."""
+    if task.due is None:
+        return ""
+    d = task.days_until_due
+    if task.is_overdue:
+        bg, fg, txt = "#fee2e2", "#b91c1c", f"⚠ Overdue · {task.due} ({-d}d)"
+    elif d == 0:
+        bg, fg, txt = "#fef9c3", "#a16207", f"Due today · {task.due}"
+    elif d is not None and d <= 2:
+        bg, fg, txt = "#fef9c3", "#a16207", f"Due soon · {task.due} ({d}d)"
+    else:
+        bg, fg, txt = "#f1f5f9", "#475569", f"Due {task.due} ({d}d)"
+    return f'<span class="badge" style="background:{bg};color:{fg}">{txt}</span>'
+
+
 # --- sidebar: create task --------------------------------------------------
 def sidebar_add() -> None:
     st.sidebar.header("➕ Add task")
     with st.sidebar.form("add_task", clear_on_submit=True):
-        title = st.text_input("Title")
-        description = st.text_area("Description", height=80)
-        priority = st.selectbox(
+        title = st.text_input("Title", placeholder="What needs doing?")
+        description = st.text_area("Description", height=80, placeholder="Optional details…")
+        priority = st.select_slider(
             "Priority",
-            list(Priority),
-            index=list(Priority).index(Priority.MEDIUM),
+            options=list(Priority),
+            value=Priority.MEDIUM,
             format_func=lambda p: p.label,
         )
         has_due = st.checkbox("Has due date")
         due = st.date_input("Due", value=date.today()) if has_due else None
-        tags_raw = st.text_input("Tags (comma separated)")
+        tags_raw = st.text_input("Tags", placeholder="work, urgent")
         recurs = st.checkbox("Recurring")
         rule = None
         if recurs:
@@ -79,8 +155,8 @@ def sidebar_add() -> None:
             interval = col_i.number_input("Interval", min_value=1, value=1, step=1)
             rule = RecurrenceRule(unit, int(interval))
 
-        if st.form_submit_button("Add", use_container_width=True):
-            tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+        if st.form_submit_button("Add task", use_container_width=True, type="primary"):
+            tags = [t.strip() for t in tags_raw.replace(",", " ").split() if t.strip()]
             try:
                 svc.add(
                     title,
@@ -90,48 +166,65 @@ def sidebar_add() -> None:
                     tags=tags,
                     recurrence=rule,
                 )
-                st.sidebar.success(f"Added “{title}”")
+                st.toast(f"Added “{title}”", icon="✅")
                 rerun()
             except TodoError as exc:
                 st.sidebar.error(str(exc))
 
 
 def sidebar_history() -> None:
+    st.sidebar.divider()
     st.sidebar.header("↩️ History")
     c1, c2 = st.sidebar.columns(2)
-    if c1.button("Undo", use_container_width=True):
+    if c1.button("↶ Undo", use_container_width=True):
         try:
-            name = svc.undo()
-            st.sidebar.info(f"Undid {name}")
+            st.toast(f"Undid {svc.undo()}", icon="↶")
             rerun()
         except TodoError as exc:
             st.sidebar.warning(str(exc))
-    if c2.button("Redo", use_container_width=True):
+    if c2.button("↷ Redo", use_container_width=True):
         try:
-            name = svc.redo()
-            st.sidebar.info(f"Redid {name}")
+            st.toast(f"Redid {svc.redo()}", icon="↷")
             rerun()
         except TodoError as exc:
             st.sidebar.warning(str(exc))
+
+
+# --- header dashboard ------------------------------------------------------
+def render_hero() -> None:
+    s = svc.stats()
+    st.markdown(
+        '<div class="hero"><h1>✅ TodoApp</h1>'
+        "<p>Plan, track and complete — backed by an undo-able task engine.</p></div>",
+        unsafe_allow_html=True,
+    )
+    c1, c2, c3, c4 = st.columns(4)
+    active = s.by_status.get("TODO", 0) + s.by_status.get("IN_PROGRESS", 0)
+    c1.metric("Total", s.total)
+    c2.metric("Active", active)
+    c3.metric("Done", s.by_status.get("DONE", 0))
+    c4.metric("Overdue", s.overdue, delta=None if not s.overdue else "needs attention",
+              delta_color="inverse")
+    st.progress(s.completion_rate, text=f"{s.completion_rate:.0%} complete")
 
 
 # --- filters ---------------------------------------------------------------
 def build_filters():
-    st.subheader("🔎 Filters")
-    c1, c2, c3, c4 = st.columns([2, 2, 2, 2])
-    statuses = c1.multiselect(
-        "Status", list(Status), format_func=lambda s: s.name.replace("_", " ").title()
-    )
-    min_priority = c2.selectbox(
-        "Min priority",
-        [None, *list(Priority)],
-        format_func=lambda p: "Any" if p is None else p.label,
-    )
-    tag = c3.text_input("Tag")
-    overdue_only = c4.checkbox("Overdue only")
-    c5, c6 = st.columns([3, 1])
-    text = c5.text_input("Search text")
-    sort = c6.selectbox("Sort", ["priority", "due", "created", "title", "status"])
+    with st.expander("🔎 Filters & sort", expanded=False):
+        c1, c2, c3 = st.columns([2, 2, 1])
+        statuses = c1.multiselect(
+            "Status", list(Status),
+            format_func=lambda s: s.name.replace("_", " ").title(),
+        )
+        min_priority = c2.selectbox(
+            "Min priority", [None, *list(Priority)],
+            format_func=lambda p: "Any" if p is None else p.label,
+        )
+        overdue_only = c3.checkbox("Overdue", value=False)
+        c4, c5, c6 = st.columns([2, 2, 1])
+        tag = c4.text_input("Tag", placeholder="work")
+        text = c5.text_input("Search", placeholder="title or description")
+        sort = c6.selectbox("Sort", ["priority", "due", "created", "title", "status"])
 
     spec = None
 
@@ -154,73 +247,130 @@ def build_filters():
 
 # --- task rendering --------------------------------------------------------
 def render_task(task) -> None:
-    icon = STATUS_ICON[task.status]
-    overdue = " 🔴 OVERDUE" if task.is_overdue else ""
-    due = f" · due {task.due}" if task.due else ""
-    tags = " ".join(str(t) for t in sorted(task.tags))
-    header = f"{icon} {task.priority.label[:4]:<4} {task.title}{due}{overdue}"
+    with st.container(border=True):
+        top, actions = st.columns([5, 1])
+        with top:
+            pc = PRIORITY_COLOR[task.priority]
+            sc = STATUS_COLOR[task.status]
+            ttl_cls = "ttl ttl-done" if task.is_done else "ttl"
+            badges = (
+                f'<span class="pill" style="background:{sc}">'
+                f"{STATUS_ICON[task.status]} {task.status.name.replace('_',' ').title()}</span>"
+                f'<span class="pill" style="background:{pc}">{task.priority.label}</span>'
+                + due_badge(task)
+            )
+            tags = "".join(f'<span class="tag">{t}</span>' for t in sorted(str(x) for x in task.tags))
+            st.markdown(
+                f'<div class="{ttl_cls}">{task.title}</div>{badges}'
+                + (f'<div style="margin-top:6px">{tags}</div>' if tags else ""),
+                unsafe_allow_html=True,
+            )
+            if task.description:
+                st.markdown(f'<div style="margin-top:6px">{task.description}</div>',
+                            unsafe_allow_html=True)
+            meta = f"<code>{task.id}</code>"
+            if task.dependencies:
+                meta += f" · depends on {', '.join(f'<code>{d}</code>' for d in sorted(task.dependencies))}"
+            st.markdown(f'<div class="muted" style="margin-top:6px">{meta}</div>',
+                        unsafe_allow_html=True)
 
-    with st.expander(header):
-        if task.description:
-            st.write(task.description)
-        meta = [f"`{task.id}`", f"status: **{task.status.name}**"]
-        if tags:
-            meta.append(tags)
-        if task.dependencies:
-            meta.append(f"deps: {', '.join(sorted(task.dependencies))}")
-        st.caption(" · ".join(meta))
+        with actions:
+            with st.popover("⚙", use_container_width=True):
+                if not task.is_done and st.button("✅ Complete", key=f"done_{task.id}",
+                                                  use_container_width=True):
+                    _try(svc.complete, task.id)
+                new_status = st.selectbox(
+                    "Set status", list(Status),
+                    index=list(Status).index(task.status),
+                    key=f"st_{task.id}",
+                    format_func=lambda s: s.name.replace("_", " ").title(),
+                )
+                if st.button("Apply status", key=f"apply_{task.id}",
+                             use_container_width=True):
+                    _try(svc.set_status, task.id, new_status)
+                if st.button("🗑 Delete", key=f"del_{task.id}",
+                             use_container_width=True):
+                    _try(svc.delete, task.id)
 
-        cols = st.columns(4)
-        # status transition
-        new_status = cols[0].selectbox(
-            "Set status",
-            list(Status),
-            index=list(Status).index(task.status),
-            key=f"st_{task.id}",
-            format_func=lambda s: s.name.replace("_", " ").title(),
-        )
-        if cols[1].button("Apply", key=f"apply_{task.id}"):
-            try:
-                svc.set_status(task.id, new_status)
-                rerun()
-            except TodoError as exc:
-                st.error(str(exc))
-        if not task.is_done and cols[2].button("✅ Complete", key=f"done_{task.id}"):
-            try:
-                svc.complete(task.id)
-                rerun()
-            except TodoError as exc:
-                st.error(str(exc))
-        if cols[3].button("🗑️ Delete", key=f"del_{task.id}"):
-            svc.delete(task.id)
-            rerun()
+
+def _try(fn, *args) -> None:
+    """Run a mutating service call, surface TodoError as a toast, then rerun."""
+    try:
+        fn(*args)
+        rerun()
+    except TodoError as exc:
+        st.toast(str(exc), icon="⚠️")
 
 
 # --- stats -----------------------------------------------------------------
 def render_stats() -> None:
     s = svc.stats()
+    st.subheader("📊 Overview")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total", s.total)
     c2.metric("Completion", f"{s.completion_rate:.0%}")
     c3.metric("Overdue", s.overdue)
     c4.metric("Done", s.by_status.get("DONE", 0))
+    st.divider()
     ca, cb = st.columns(2)
-    ca.bar_chart(
-        {k: v for k, v in s.by_status.items() if v}, x_label="status", y_label="count"
-    )
-    cb.bar_chart(
-        {k: v for k, v in s.by_priority.items() if v},
-        x_label="priority",
-        y_label="count",
-    )
+    with ca:
+        st.caption("By status")
+        st.bar_chart({k: v for k, v in s.by_status.items() if v},
+                     x_label="status", y_label="count", color="#6366f1")
+    with cb:
+        st.caption("By priority")
+        st.bar_chart({k: v for k, v in s.by_priority.items() if v},
+                     x_label="priority", y_label="count", color="#d946ef")
     if s.top_tags:
-        st.caption("Top tags: " + ", ".join(f"#{n}={c}" for n, c in s.top_tags))
+        st.divider()
+        st.caption("Top tags")
+        st.markdown(
+            " ".join(f'<span class="tag">#{n} · {c}</span>' for n, c in s.top_tags),
+            unsafe_allow_html=True,
+        )
+
+
+# --- dependency tab --------------------------------------------------------
+def render_order() -> None:
+    st.subheader("🔗 Execution order")
+    st.caption("Tasks listed so every dependency comes before what needs it.")
+    try:
+        order = svc.topological_order()
+        if not order:
+            st.info("No tasks yet.")
+        for i, task in enumerate(order, 1):
+            st.markdown(
+                f'**{i}.** {STATUS_ICON[task.status]} {task.title} '
+                f'<span class="muted">`{task.id}`</span>',
+                unsafe_allow_html=True,
+            )
+    except TodoError as exc:
+        st.error(f"Cannot order — cycle detected: {exc}")
+
+    st.divider()
+    st.subheader("Add dependency")
+    all_tasks = svc.all()
+    if len(all_tasks) >= 2:
+        opts = {f"{t.title} ({t.id})": t.id for t in all_tasks}
+        c1, c2 = st.columns(2)
+        a = c1.selectbox("Task", list(opts), key="dep_a")
+        b = c2.selectbox("depends on", list(opts), key="dep_b")
+        if st.button("🔗 Link", type="primary"):
+            try:
+                svc.add_dependency(opts[a], opts[b])
+                st.toast("Linked", icon="🔗")
+                rerun()
+            except TodoError as exc:
+                st.error(str(exc))
+    else:
+        st.info("Need at least 2 tasks to link dependencies.")
 
 
 # --- main ------------------------------------------------------------------
 def main() -> None:
     st.set_page_config(page_title="TodoApp", page_icon="✅", layout="wide")
-    st.title("✅ TodoApp")
+    inject_css()
+    render_hero()
 
     sidebar_add()
     sidebar_history()
@@ -230,9 +380,9 @@ def main() -> None:
     with tab_tasks:
         spec, sort = build_filters()
         tasks = svc.find(spec, sort=sort)
-        st.caption(f"{len(tasks)} task(s)")
+        st.caption(f"Showing {len(tasks)} task(s)")
         if not tasks:
-            st.info("No tasks match. Add one from the sidebar.")
+            st.info("🗒️ Nothing here yet — add a task from the sidebar to get started.")
         for task in tasks:
             render_task(task)
 
@@ -240,30 +390,7 @@ def main() -> None:
         render_stats()
 
     with tab_dag:
-        st.subheader("Topological order (dependencies first)")
-        try:
-            for i, task in enumerate(svc.topological_order(), 1):
-                st.write(f"{i}. {STATUS_ICON[task.status]} {task.title}  `{task.id}`")
-        except TodoError as exc:
-            st.error(f"Cannot order: {exc}")
-
-        st.divider()
-        st.subheader("Add dependency")
-        all_tasks = svc.all()
-        if len(all_tasks) >= 2:
-            opts = {f"{t.title} ({t.id})": t.id for t in all_tasks}
-            c1, c2 = st.columns(2)
-            a = c1.selectbox("Task", list(opts), key="dep_a")
-            b = c2.selectbox("depends on", list(opts), key="dep_b")
-            if st.button("Link"):
-                try:
-                    svc.add_dependency(opts[a], opts[b])
-                    st.success("Linked")
-                    rerun()
-                except TodoError as exc:
-                    st.error(str(exc))
-        else:
-            st.info("Need at least 2 tasks to link dependencies.")
+        render_order()
 
 
 if __name__ == "__main__":
